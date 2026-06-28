@@ -12,6 +12,7 @@ from mcpm.clients.client_config import ClientConfigManager
 # Import all client managers
 from mcpm.clients.managers.claude_code import ClaudeCodeManager
 from mcpm.clients.managers.claude_desktop import ClaudeDesktopManager
+from mcpm.clients.managers.claude_desktop_3p import ClaudeDesktop3pManager
 from mcpm.clients.managers.cline import ClineManager, RooCodeManager
 from mcpm.clients.managers.codex_cli import CodexCliManager
 from mcpm.clients.managers.continue_extension import ContinueManager
@@ -41,6 +42,7 @@ class ClientRegistry:
     _CLIENT_MANAGERS = {
         "claude-code": ClaudeCodeManager,
         "claude-desktop": ClaudeDesktopManager,
+        "claude-desktop-3p": ClaudeDesktop3pManager,
         "windsurf": WindsurfManager,
         "cursor": CursorManager,
         "cline": ClineManager,
