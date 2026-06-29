@@ -60,7 +60,7 @@ class ClientRegistry:
 
     @classmethod
     def get_client_manager(
-        cls, client_name: str, config_path_override: Optional[str] = None
+        cls, client_name: str, config_path_override: Optional[str] = None, managed: bool = False
     ) -> Optional[BaseClientManager]:
         """
         Get the client manager for a given client name
@@ -68,14 +68,19 @@ class ClientRegistry:
         Args:
             client_name: Name of the client
             config_path_override: Optional path to override the default config file location
+            managed: When True and the client is claude-desktop-3p, target the
+                managedMcpServers array in the active configLibrary profile.
 
         Returns:
             BaseClientManager: Client manager instance or None if not found
         """
         manager_class = cls._CLIENT_MANAGERS.get(client_name)
-        if manager_class:
-            return manager_class(config_path_override=config_path_override)
-        return None
+        if manager_class is None:
+            return None
+        # Only ClaudeDesktop3pManager understands the managed flag.
+        if manager_class is ClaudeDesktop3pManager:
+            return manager_class(config_path_override=config_path_override, managed=managed)
+        return manager_class(config_path_override=config_path_override)
 
     @classmethod
     def get_all_client_managers(cls) -> Dict[str, BaseClientManager]:
