@@ -227,6 +227,12 @@ def list_clients(verbose):
 @click.option("--set-profiles", help="Comma-separated list of profile names to set (replaces all)")
 @click.option("--force", is_flag=True, help="Skip confirmation prompts")
 @click.option("--disabled", is_flag=True, default=False, help="Add server as disabled (requires --add-server)")
+@click.option(
+    "--managed",
+    is_flag=True,
+    default=False,
+    help="Sync to managedMcpServers in the active Claude 3P configLibrary profile (claude-desktop-3p only)",
+)
 def edit_client(
     client_name,
     external,
@@ -239,6 +245,7 @@ def edit_client(
     set_profiles,
     force,
     disabled,
+    managed,
 ):
     """Enable/disable MCPM-managed servers in the specified client configuration.
 
@@ -247,8 +254,15 @@ def edit_client(
 
     CLIENT_NAME is the name of the MCP client to configure (e.g., cursor, claude-desktop, windsurf).
     """
+    # --managed is only meaningful for the Claude Desktop 3P client.
+    if managed and client_name != "claude-desktop-3p":
+        console.print("[red]Error: --managed is only supported for the claude-desktop-3p client.[/]")
+        return
+
     # Get the client manager for the specified client
-    client_manager = ClientRegistry.get_client_manager(client_name, config_path_override=config_path_override)
+    client_manager = ClientRegistry.get_client_manager(
+        client_name, config_path_override=config_path_override, managed=managed
+    )
     if client_manager is None:
         console.print(f"[red]Error: Client '{client_name}' is not supported.[/]")
         console.print("[yellow]Available clients:[/]")
@@ -292,6 +306,7 @@ def edit_client(
             set_profiles=set_profiles,
             force=force,
             disabled=disabled,
+            managed=managed,
         )
         sys.exit(exit_code)
 
@@ -309,20 +324,27 @@ def edit_client(
     current_config = client_manager._load_config()
     mcpm_servers = set()
 
-    configure_key = getattr(client_manager, "configure_key_name", "mcpServers")
-    mcp_servers = current_config.get(configure_key, {})
-    for client_server_name, server_config in mcp_servers.items():
-        if not isinstance(server_config, dict):
-            continue
-        raw_cmd = server_config.get("command", "")
-        if isinstance(raw_cmd, list):
-            command = raw_cmd[0] if raw_cmd else ""
-            args = raw_cmd[1:] if len(raw_cmd) > 1 else []
+    # Build the set of currently-enabled mcpm servers from get_servers(), which
+    # returns the right shape for both the standard mcpServers dict and managed
+    # mode (managedMcpServers array keyed by clean name). Detection keys off the
+    # command/args (command == "mcpm" and args == ["run", <name>]) so it does
+    # not depend on an mcpm_ name prefix; managed entries use clean names.
+    for client_server_name, server_config in client_manager.get_servers().items():
+        if hasattr(server_config, "command") and not isinstance(server_config, dict):
+            command = server_config.command
+            args = getattr(server_config, "args", [])
+        elif isinstance(server_config, dict):
+            raw_cmd = server_config.get("command", "")
+            if isinstance(raw_cmd, list):
+                command = raw_cmd[0] if raw_cmd else ""
+                args = raw_cmd[1:] if len(raw_cmd) > 1 else []
+            else:
+                command = raw_cmd
+                args = server_config.get("args", [])
         else:
-            command = raw_cmd
-            args = server_config.get("args", [])
+            continue
 
-        if client_server_name.startswith("mcpm_") and command == "mcpm" and len(args) >= 2 and args[0] == "run":
+        if command == "mcpm" and len(args) >= 2 and args[0] == "run":
             mcpm_servers.add(args[1])
 
     # Get all MCPM global servers
@@ -1178,8 +1200,16 @@ def _edit_client_non_interactive(
     set_profiles: str = None,
     force: bool = False,
     disabled: bool = False,
+    managed: bool = False,
 ) -> int:
-    """Edit client configuration non-interactively."""
+    """Edit client configuration non-interactively.
+
+    When ``managed`` is True the provided ``client_manager`` is already in
+    managed mode (claude-desktop-3p only), so add/remove operations transparently
+    target the managedMcpServers array in the active configLibrary profile. This
+    function does not need to branch on the flag; it is accepted for clarity and
+    future use.
+    """
     try:
         # Validate conflicting options
         server_options = [add_server, remove_server, set_servers]
